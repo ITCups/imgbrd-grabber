@@ -1,7 +1,7 @@
 #ifndef WINDOWS_FILE_PROPERTY_H
 #define WINDOWS_FILE_PROPERTY_H
 
-#include <Windows.h>
+#include <windows.h>
 #include <QMap>
 #include <QString>
 

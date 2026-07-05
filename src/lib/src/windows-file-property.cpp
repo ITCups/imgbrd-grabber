@@ -1,6 +1,14 @@
 // https://github.com/microsoft/Windows-classic-samples/tree/master/Samples/Win7Samples/winui/shell/appplatform/PropertyEdit
 
 #include "windows-file-property.h"
+
+#ifndef NTDDI_VERSION
+#define NTDDI_VERSION NTDDI_VISTA
+#endif
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601
+#endif
+
 #include <shobjidl.h>
 #include <propsys.h>
 #include <propvarutil.h>

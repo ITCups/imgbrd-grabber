@@ -4,8 +4,6 @@
 #include "logger.h"
 #include "network/network-reply.h"
 
-#define WRITE_BUFFER_SIZE (200 * 1024)
-
 
 FileDownloader::FileDownloader(bool allowHtmlResponses, QObject *parent)
 	: QObject(parent), m_allowHtmlResponses(allowHtmlResponses), m_reply(nullptr), m_readSize(0), m_writeError(false)
@@ -30,14 +28,25 @@ bool FileDownloader::start(NetworkReply *reply, const QString &path)
 	return ok;
 }
 
+void FileDownloader::reset()
+{
+	if (m_reply) {
+		disconnect(m_reply, nullptr, this, nullptr);
+		m_reply = nullptr;
+	}
+	m_readSize = 0;
+	m_writeError = false;
+	m_file.close();
+}
+
 
 void FileDownloader::replyReadyRead()
 {
-	if (m_reply->bytesAvailable() < WRITE_BUFFER_SIZE) {
+	const QByteArray data = m_reply->readAll();
+	if (data.isEmpty()) {
 		return;
 	}
 
-	const QByteArray data = m_reply->readAll();
 	m_readSize += data.size();
 
 	if (m_file.write(data) < 0) {

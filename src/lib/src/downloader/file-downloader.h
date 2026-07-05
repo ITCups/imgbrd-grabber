@@ -15,6 +15,7 @@ class FileDownloader : public QObject
 	public:
 		explicit FileDownloader(bool allowHtmlResponses, QObject *parent = nullptr);
 		bool start(NetworkReply *reply, const QString &path);
+		void reset();
 
 	signals:
 		void writeError();

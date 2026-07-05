@@ -36,16 +36,25 @@ ImageDownloader::ImageDownloader(Profile *profile, QSharedPointer<Image> img, QS
 	: QObject(parent), m_profile(profile), m_image(std::move(img)), m_fileDownloader(false, this), m_filename(std::move(filename)), m_path(std::move(path)), m_loadTags(loadTags), m_count(count), m_addMd5(addMd5), m_startCommands(startCommands), m_writeError(false), m_rotate(rotate), m_force(force), m_postSave(postSave), m_forceExisting(forceExisting)
 {
 	setSize(size);
+	m_stallTimer = new QTimer(this);
+	m_stallTimer->setSingleShot(true);
+	connect(m_stallTimer, &QTimer::timeout, this, &ImageDownloader::checkStall);
 }
 
 ImageDownloader::ImageDownloader(Profile *profile, QSharedPointer<Image> img, QStringList paths, int count, bool addMd5, bool startCommands, QObject *parent, bool rotate, bool force, Image::Size size, bool postSave, bool forceExisting)
 	: QObject(parent), m_profile(profile), m_image(std::move(img)), m_fileDownloader(false, this), m_loadTags(false), m_paths(std::move(paths)), m_count(count), m_addMd5(addMd5), m_startCommands(startCommands), m_writeError(false), m_rotate(rotate), m_force(force), m_postSave(postSave), m_forceExisting(forceExisting)
 {
 	setSize(size);
+	m_stallTimer = new QTimer(this);
+	m_stallTimer->setSingleShot(true);
+	connect(m_stallTimer, &QTimer::timeout, this, &ImageDownloader::checkStall);
 }
 
 ImageDownloader::~ImageDownloader()
 {
+	if (m_stallTimer != nullptr) {
+		m_stallTimer->stop();
+	}
 	if (m_reply != nullptr) {
 		m_reply->deleteLater();
 	}
@@ -78,6 +87,8 @@ void ImageDownloader::setBlacklist(Blacklist *blacklist)
 
 void ImageDownloader::save()
 {
+	m_stallRetries = 0;
+
 	// Try to build a path first if we don't need tags for the filename, to check for the "same dir" MD5 setting
 	const int filenameTagLevel = m_filename.needExactTags(m_image->parentSite(), m_profile->getSettings());
 	const bool filenameNeedExactTags = filenameTagLevel == 2 || (filenameTagLevel == 1 && m_image->hasUnknownTag());
@@ -171,6 +182,9 @@ int ImageDownloader::needExactTags(QSettings *settings) const
 
 void ImageDownloader::abort()
 {
+	if (m_stallTimer != nullptr) {
+		m_stallTimer->stop();
+	}
 	m_image->abortTags();
 	if (m_reply != nullptr && m_reply->isRunning()) {
 		m_reply->abort();
@@ -284,6 +298,12 @@ void ImageDownloader::loadImage(bool rateLimit)
 	m_reply->setParent(this);
 	connect(m_reply, &NetworkReply::downloadProgress, this, &ImageDownloader::downloadProgressImage);
 
+	// Start stall detection timer
+	m_lastBytesReceived = 0;
+	if (m_stallTimer != nullptr) {
+		m_stallTimer->start(STALL_TIMEOUT_MS);
+	}
+
 	// Create download root directory
 	const QString rootDir = m_temporaryPath.section(QDir::separator(), 0, -2);
 	if (!QDir(rootDir).exists() && !QDir().mkpath(rootDir)) {
@@ -303,6 +323,13 @@ void ImageDownloader::downloadProgressImage(qint64 v1, qint64 v2)
 {
 	if (m_image->fileSize() == 0 || m_image->fileSize() < v2 / 2) {
 		m_image->setFileSize(v2, currentSize());
+	}
+
+	m_lastBytesReceived = v1;
+
+	// Reset the stall timer on every progress update
+	if (m_stallTimer != nullptr) {
+		m_stallTimer->start(STALL_TIMEOUT_MS);
 	}
 
 	emit downloadProgress(m_image, v1, v2);
@@ -326,11 +353,18 @@ QList<ImageSaveResult> ImageDownloader::makeResult(const QStringList &paths, Ima
 
 void ImageDownloader::writeError()
 {
+	if (m_stallTimer != nullptr) {
+		m_stallTimer->stop();
+	}
 	emit saved(m_image, makeResult(m_paths, Image::SaveResult::Error));
 }
 
 void ImageDownloader::networkError(NetworkReply::NetworkError error, const QString &msg)
 {
+	if (m_stallTimer != nullptr) {
+		m_stallTimer->stop();
+	}
+
 	if (error == NetworkReply::NetworkError::ContentNotFoundError) {
 		QSettings *settings = m_profile->getSettings();
 		ExtensionRotator *extensionRotator = m_image->extensionRotator();
@@ -343,12 +377,14 @@ void ImageDownloader::networkError(NetworkReply::NetworkError error, const QStri
 			m_url = setExtension(m_image->url(m_size), newExt);
 			log(QStringLiteral("Image not found. New try with extension %1 (%2)...").arg(newExt, m_url.toString()));
 			m_image->setUrl(m_url);
+			m_stallRetries = 0;
 			loadImage();
 		} else if (shouldFallback && !m_tryingSample) {
 			m_url = m_image->url(Image::Size::Sample);
 			m_tryingSample = true;
 			log(QStringLiteral("Image not found. New try with its sample (%1)...").arg(m_url.toString()), Logger::Warning);
 			m_image->setUrl(m_url);
+			m_stallRetries = 0;
 			loadImage();
 		} else {
 			m_tryingSample = false;
@@ -367,6 +403,7 @@ void ImageDownloader::networkError(NetworkReply::NetworkError error, const QStri
 		const int statusCode = m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
 		if (statusCode == 429 || statusCode == 503 || statusCode == 509) {
 			log(QStringLiteral("Rate limit reached (%1) for the image `%2`. New try.").arg(QString::number(statusCode), m_image->url().toString().toHtmlEscaped()), Logger::Warning);
+			m_stallRetries = 0;
 			loadImage(true);
 			return;
 		}
@@ -378,11 +415,22 @@ void ImageDownloader::networkError(NetworkReply::NetworkError error, const QStri
 
 void ImageDownloader::success()
 {
+	if (m_stallTimer != nullptr) {
+		m_stallTimer->stop();
+	}
+
+	// Capture reply reference before any re-entrant code can change m_reply
+	NetworkReply *currentReply = m_reply;
+	if (currentReply == nullptr) {
+		// Download was aborted/stalled while we were on the stack
+		return;
+	}
+
 	// Handle network redirects
-	const QUrl redirect = m_reply->attribute(QNetworkRequest::RedirectionTargetAttribute).toUrl();
+	const QUrl redirect = currentReply->attribute(QNetworkRequest::RedirectionTargetAttribute).toUrl();
 	if (!redirect.isEmpty()) {
 		// Detect Cloudflare redirects to error or home pages
-		if (m_reply->rawHeader("server") == "cloudflare" && getExtension(m_url) != getExtension(redirect)) {
+		if (currentReply->rawHeader("server") == "cloudflare" && getExtension(m_url) != getExtension(redirect)) {
 			log(QStringLiteral("Cloudflare redirect image `%1` to `%2` ignored").arg(m_url.toString().toHtmlEscaped(), redirect.toString().toHtmlEscaped()), Logger::Info);
 			QFile::remove(m_temporaryPath);
 			emit saved(m_image, makeResult(m_paths, Image::SaveResult::NetworkError));
@@ -391,11 +439,58 @@ void ImageDownloader::success()
 
 		log(QStringLiteral("Redirecting image `%1` to `%2`").arg(m_url.toString().toHtmlEscaped(), redirect.toString().toHtmlEscaped()), Logger::Info);
 		m_url = redirect;
+		m_stallRetries = 0;  // Fresh URL, reset stall retries
 		loadImage();
 		return;
 	}
 
 	emit saved(m_image, afterTemporarySave(Image::SaveResult::Saved));
+}
+
+void ImageDownloader::checkStall()
+{
+	if (m_reply == nullptr || !m_reply->isRunning()) {
+		return;
+	}
+
+	// Check if we've received any data at all
+	if (m_lastBytesReceived == 0) {
+		log(QStringLiteral("Download stalled (no data received) for image: `%1`. Retrying...").arg(m_image->url().toString().toHtmlEscaped()), Logger::Warning);
+	} else {
+		log(QStringLiteral("Download stalled (no progress for %1s) for image: `%2`. Retrying...").arg(STALL_TIMEOUT_MS / 1000).arg(m_image->url().toString().toHtmlEscaped()), Logger::Warning);
+	}
+
+	// Disconnect old signals BEFORE aborting to prevent race conditions
+	disconnect(&m_fileDownloader, &FileDownloader::success, this, &ImageDownloader::success);
+	disconnect(&m_fileDownloader, &FileDownloader::networkError, this, &ImageDownloader::networkError);
+	disconnect(&m_fileDownloader, &FileDownloader::writeError, this, &ImageDownloader::writeError);
+
+	// Abort the current download so it can't emit progress/finished signals
+	// after we've moved on (which would otherwise re-arm the stall timer or
+	// cause this handler to fire again and emit saved() a second time)
+	if (m_reply != nullptr) {
+		m_reply->abort();
+		m_reply->deleteLater();
+		m_reply = nullptr;
+	}
+
+	// Reset the file downloader state
+	m_fileDownloader.reset();
+
+	// Remove the temporary file from the failed download
+	QFile::remove(m_temporaryPath);
+
+	if (m_stallRetries >= MAX_STALL_RETRIES) {
+		log(QStringLiteral("Max stall retries (%1) reached for image: `%2`. Giving up.").arg(MAX_STALL_RETRIES).arg(m_image->url().toString().toHtmlEscaped()), Logger::Error);
+		emit saved(m_image, makeResult(m_paths, Image::SaveResult::NetworkError));
+		return;
+	}
+
+	m_stallRetries++;
+
+	// Retry the download
+	m_lastBytesReceived = 0;
+	loadImage();
 }
 
 QList<ImageSaveResult> ImageDownloader::afterTemporarySave(Image::SaveResult saveResult)
