@@ -3,7 +3,7 @@
 	#include "ios/ios-share-utils.h"
 #elif defined(Q_OS_ANDROID)
 	#include "android/android-share-utils.h"
-#elif defined(Q_OS_WIN)
+#elif defined(Q_OS_WIN) && defined(_MSC_VER)
 	#include "windows/windows-share-utils.h"
 #else
 	#include "base-share-utils.h"
@@ -18,7 +18,7 @@ ShareUtils::ShareUtils(QQuickItem *parent)
 		m_shareUtils = new IosShareUtils(this);
 	#elif defined(Q_OS_ANDROID)
 		m_shareUtils = new AndroidShareUtils(this);
-	#elif defined(Q_OS_WIN)
+	#elif defined(Q_OS_WIN) && defined(_MSC_VER)
 		m_shareUtils = new WindowsShareUtils(this);
 	#else
 		m_shareUtils = new BaseShareUtils(this);

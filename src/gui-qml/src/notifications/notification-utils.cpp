@@ -3,7 +3,7 @@
 	#include "ios/ios-notification-utils.h"
 #elif defined(Q_OS_ANDROID)
 	#include "android/android-notification-utils.h"
-#elif defined(Q_OS_WIN)
+#elif defined(Q_OS_WIN) && defined(_MSC_VER)
 	#include "windows/windows-notification-utils.h"
 #else
 	#include "base-notification-utils.h"
@@ -18,7 +18,7 @@ NotificationUtils::NotificationUtils(QQuickItem *parent)
 		m_notificationUtils = new IosNotificationUtils(this);
 	#elif defined(Q_OS_ANDROID)
 		m_notificationUtils = new AndroidNotificationUtils(this);
-	#elif defined(Q_OS_WIN)
+	#elif defined(Q_OS_WIN) && defined(_MSC_VER)
 		m_notificationUtils = new WindowsNotificationUtils(this);
 	#else
 		m_notificationUtils = new BaseNotificationUtils(this);

@@ -36,10 +36,12 @@ endif()
 if(NOT IOS)
 	listFilterRegex(SOURCES "ios/")
 endif()
-if(NOT WIN32)
+if(NOT MSVC)
+	listFilterRegex(SOURCES "vendor/windows/")
 	listFilterRegex(SOURCES "windows/")
 else()
 	list(APPEND LIBS "WindowsApp.lib")
+
 endif()
 
 qt_add_executable(${PROJECT_NAME} ${SOURCES} ${STATUSBAR_SOURCES} ${UTILS_SOURCES})

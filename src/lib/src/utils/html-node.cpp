@@ -136,7 +136,7 @@ QStringList HtmlNode::pathIds() const
 }
 
 
-lxb_status_t find_callback(lxb_dom_node_t *node, lxb_css_selector_specificity_t *spec, void *ctx)
+lxb_status_t find_callback(lxb_dom_node_t *node, lxb_css_selector_specificity_t spec, void *ctx)
 {
 	Q_UNUSED(spec)
 
@@ -154,7 +154,7 @@ QList<HtmlNode> HtmlNode::find(const QString &css) const
 {
 	// Create CSS parser
 	auto *parser = lxb_css_parser_create();
-	auto parser_status = lxb_css_parser_init(parser, NULL, NULL);
+	auto parser_status = lxb_css_parser_init(parser, NULL);
 	if (parser_status != LXB_STATUS_OK) {
 		log(QStringLiteral("Error creating CSS parser: %1.").arg(parser_status), Logger::Error);
 		return {};

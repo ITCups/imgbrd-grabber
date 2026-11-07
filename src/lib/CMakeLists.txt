@@ -37,6 +37,8 @@ if(WIN_FILE_PROPS)
 	set(LIBS ${LIBS} propsys)
 else()
 	listFilterRegex(SOURCES "windows-file-property.*")
+endif()
+if(NOT WIN32)
 	listFilterRegex(SOURCES "windows-url-protocol.*")
 endif()
 
