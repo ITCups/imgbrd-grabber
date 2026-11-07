@@ -121,9 +121,10 @@ endif()
 
 # Windows file properties
 set(WIN_FILE_PROPS 0)
-if(MSVC OR CMAKE_CXX_COMPILER MATCHES "cl\\.exe")
+if(MSVC OR CMAKE_CXX_COMPILER MATCHES "cl\\.exe" OR (WIN32 AND MINGW))
 	set(WIN_FILE_PROPS 1)
 	add_definitions(-DWIN_FILE_PROPS=1)
+	add_definitions(-DNTDDI_VERSION=NTDDI_VISTA -D_WIN32_WINNT=0x0601)
 endif()
 
 # Necessary to prevent "Target "Qt6::QmlIntegration" not found." errors on targets not using QML

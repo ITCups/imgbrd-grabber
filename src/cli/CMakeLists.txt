@@ -9,7 +9,10 @@ file(GLOB_RECURSE SOURCES "src/*.cpp" "vendor/*.cpp")
 include_directories("src/" "../lib/src/" ".." ".")
 
 # CLI library (to be included in the CLI executable)
-add_library(${PROJECT_NAME}-lib STATIC ${SOURCES})
+include(ListFilterRegex)
+set(LIB_SOURCES ${SOURCES})
+listFilterRegex(LIB_SOURCES "src/main\\.cpp$")
+add_library(${PROJECT_NAME}-lib STATIC ${LIB_SOURCES})
 target_link_libraries(${PROJECT_NAME}-lib ${QT_LIBRARIES} ${LIBS})
 
 # CLI executable

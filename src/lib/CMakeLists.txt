@@ -34,10 +34,11 @@ listFilterRegex(SOURCES "vendor/lexbor/")
 include_directories("src/" ".")
 
 if(WIN_FILE_PROPS)
-	set(LIBS ${LIBS} propsys)
+	set(LIBS ${LIBS} propsys shlwapi)
 else()
 	listFilterRegex(SOURCES "windows-file-property.*")
 endif()
+
 if(NOT WIN32)
 	listFilterRegex(SOURCES "windows-url-protocol.*")
 endif()

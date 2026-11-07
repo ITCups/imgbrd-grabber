@@ -6,6 +6,7 @@
 #include <QSharedPointer>
 #include <QString>
 #include <QStringList>
+#include <QTimer>
 #include <QUrl>
 #include "downloader/file-downloader.h"
 #include "downloader/image-save-result.h"
@@ -50,6 +51,7 @@ class ImageDownloader : public QObject
 		void writeError();
 		void networkError(NetworkReply::NetworkError error, const QString &msg);
 		void success();
+		void checkStall();
 
 	private:
 		Profile *m_profile;
@@ -74,6 +76,11 @@ class ImageDownloader : public QObject
 		NetworkReply *m_reply = nullptr;
 		QUrl m_url;
 		bool m_tryingSample = false;
+		QTimer *m_stallTimer = nullptr;
+		qint64 m_lastBytesReceived = 0;
+		int m_stallRetries = 0;
+		static constexpr int MAX_STALL_RETRIES = 2;
+		static constexpr int STALL_TIMEOUT_MS = 30000;  // 30 seconds
 };
 
 #endif // IMAGE_DOWNLOADER_H

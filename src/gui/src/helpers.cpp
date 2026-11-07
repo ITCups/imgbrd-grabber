@@ -8,8 +8,8 @@
 #if defined(Q_OS_WIN)
 	#include <comdef.h>
 	#include <QDir>
-	#include <ShlObj.h>
-	#include <Windows.h>
+	#include <shlobj.h>
+	#include <windows.h>
 	#include "logger.h"
 #elif defined(Q_OS_MAC)
 	#include <QProcess>

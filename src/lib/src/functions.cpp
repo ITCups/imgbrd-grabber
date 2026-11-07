@@ -20,7 +20,7 @@
 #include <QUrl>
 #include <QVector>
 #ifdef Q_OS_WIN
-	#include <Windows.h>
+	#include <windows.h>
 	#include <winbase.h>
 #else
 	#include <errno.h>
