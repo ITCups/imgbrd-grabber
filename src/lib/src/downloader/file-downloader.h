@@ -1,6 +1,7 @@
 #ifndef FILE_DOWNLOADER_H
 #define FILE_DOWNLOADER_H
 
+#include <QByteArray>
 #include <QFile>
 #include <QObject>
 #include "network/network-reply.h"
@@ -30,6 +31,7 @@ class FileDownloader : public QObject
 		bool m_allowHtmlResponses;
 		NetworkReply *m_reply;
 		QFile m_file;
+		QByteArray m_prefix;
 		int m_readSize;
 		bool m_writeError;
 };

@@ -16,6 +16,7 @@ bool FileDownloader::start(NetworkReply *reply, const QString &path)
 
 	m_readSize = 0;
 	m_writeError = false;
+	m_prefix.clear();
 	m_reply = reply;
 
 	if (ok) {
@@ -36,6 +37,7 @@ void FileDownloader::reset()
 	}
 	m_readSize = 0;
 	m_writeError = false;
+	m_prefix.clear();
 	m_file.close();
 }
 
@@ -47,6 +49,9 @@ void FileDownloader::replyReadyRead()
 		return;
 	}
 
+	if (m_prefix.size() < 100) {
+		m_prefix.append(data.constData(), qMin(100 - m_prefix.size(), data.size()));
+	}
 	m_readSize += data.size();
 
 	if (m_file.write(data) < 0) {
@@ -60,6 +65,9 @@ void FileDownloader::replyReadyRead()
 void FileDownloader::replyFinished()
 {
 	const QByteArray data = m_reply->readAll();
+	if (m_prefix.size() < 100) {
+		m_prefix.append(data.constData(), qMin(100 - m_prefix.size(), data.size()));
+	}
 	m_readSize += data.size();
 
 	const qint64 written = m_file.write(data);
@@ -69,7 +77,7 @@ void FileDownloader::replyFinished()
 	const auto msg = m_reply->errorString();
 	const QUrl redirectUrl = m_reply->attribute(QNetworkRequest::RedirectionTargetAttribute).toUrl();
 	const bool failedLastWrite = data.length() > 0 && written < 0;
-	const bool invalidHtml = !m_allowHtmlResponses && isHtml(data) && redirectUrl.isEmpty();
+	const bool invalidHtml = !m_allowHtmlResponses && isHtml(m_prefix) && redirectUrl.isEmpty();
 	const bool emptyFile = m_readSize == 0 && redirectUrl.isEmpty();
 
 	if (error != NetworkReply::NetworkError::NoError || failedLastWrite || invalidHtml || emptyFile) {
